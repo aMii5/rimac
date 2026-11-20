@@ -29,7 +29,11 @@ jobs:
         run: choco install nsis -y --no-progress
 
       - name: Build installer
-        run: '& "C:\Program Files (x86)\NSIS\makensis.exe" installer\Rimac.nsi'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & "C:\Program Files (x86)\NSIS\makensis.exe" installer\Rimac.nsi
+          if (-not (Test-Path "dist/Rimac-1.0.0-Windows-Setup.exe")) { throw "Installer not created" }
 
       - name: Collect artifacts
         shell: pwsh
