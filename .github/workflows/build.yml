@@ -1,0 +1,108 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: juce-8.0.4-${{ runner.os }}
+
+      - name: Configure
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        run: cmake --build build --config Release --target Rimac_VST3 --parallel
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $vst3 = Get-ChildItem -Path build -Recurse -Directory -Filter "Rimac.vst3" | Select-Object -First 1
+          if (-not $vst3) { throw "Rimac.vst3 not found" }
+          Write-Host "Found $($vst3.FullName)"
+          Copy-Item -Path $vst3.FullName -Destination "artifacts/Rimac.vst3" -Recurse
+          $exe = Get-ChildItem -Path build -Recurse -Filter "Rimac.exe" | Select-Object -First 1
+          if ($exe) { Copy-Item $exe.FullName "artifacts/" }
+          Compress-Archive -Path "artifacts/*" -DestinationPath "Rimac-Windows-VST3.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rimac-Windows-VST3
+          path: Rimac-Windows-VST3.zip
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: juce-8.0.4-${{ runner.os }}
+
+      - name: Configure
+        run: cmake -B build -G Xcode -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --target Rimac_VST3 Rimac_AU --parallel
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          find build -name "Rimac.vst3" -maxdepth 6 -exec cp -R {} artifacts/ \;
+          find build -name "Rimac.component" -maxdepth 6 -exec cp -R {} artifacts/ \;
+          cd artifacts && zip -r ../Rimac-macOS.zip . && cd ..
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rimac-macOS
+          path: Rimac-macOS.zip
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxext-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev libfreetype6-dev libcurl4-openssl-dev \
+            libwebkit2gtk-4.1-dev libglu1-mesa-dev ninja-build
+
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: juce-8.0.4-${{ runner.os }}
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --target Rimac_VST3 --parallel
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p artifacts
+          find build -name "Rimac.vst3" -maxdepth 6 -exec cp -R {} artifacts/ \;
+          cd artifacts && zip -r ../Rimac-Linux-VST3.zip . && cd ..
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rimac-Linux-VST3
+          path: Rimac-Linux-VST3.zip
