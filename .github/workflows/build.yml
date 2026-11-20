@@ -23,19 +23,19 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build VST3
-        run: cmake --build build --config Release --target Rimac_VST3 --parallel
+        run: cmake --build build --config Release --target Rimac_VST3 Rimac_Standalone --parallel
 
       - name: Collect artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $vst3 = Get-ChildItem -Path build -Recurse -Directory -Filter "Rimac.vst3" | Select-Object -First 1
-          if (-not $vst3) { throw "Rimac.vst3 not found" }
-          Write-Host "Found $($vst3.FullName)"
-          Copy-Item -Path $vst3.FullName -Destination "artifacts/Rimac.vst3" -Recurse
-          $exe = Get-ChildItem -Path build -Recurse -Filter "Rimac.exe" | Select-Object -First 1
+          $vst3 = "build/Rimac_artefacts/Release/VST3/Rimac.vst3"
+          if (-not (Test-Path "$vst3/Contents/x86_64-win/Rimac.vst3")) { throw "Rimac.vst3 not found in Release" }
+          Copy-Item -Path $vst3 -Destination "artifacts/Rimac.vst3" -Recurse
+          $exe = Get-ChildItem -Path build/Rimac_artefacts/Release/Standalone -Filter "Rimac.exe" -ErrorAction SilentlyContinue
           if ($exe) { Copy-Item $exe.FullName "artifacts/" }
           Compress-Archive -Path "artifacts/*" -DestinationPath "Rimac-Windows-VST3.zip" -Force
+          Get-ChildItem artifacts -Recurse | Select-Object FullName
 
       - uses: actions/upload-artifact@v4
         with:
