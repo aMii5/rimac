@@ -11,3 +11,5 @@ Thumbs.db
 *.vst3
 *.component
 artifacts/
+
+dist/

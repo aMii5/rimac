@@ -25,7 +25,13 @@ El panel derecho muestra el retrato incrustado en el binario (`juce_add_binary_d
 
 ## Instalación
 
-Descarga el ZIP desde **Actions → Build → Artifacts** y copia:
+**Windows — instalador (recomendado)**
+
+Descarga `Rimac-1.0.0-Windows-Setup.exe` desde [Releases](https://github.com/aMii5/rimac/releases/latest) y ejecútalo. Instala el VST3 en `C:\Program Files\Common Files\VST3\` y la app Standalone en `C:\Program Files\Rimac\`.
+
+**Manual / otras plataformas**
+
+Descarga el ZIP de tu sistema desde [Releases](https://github.com/aMii5/rimac/releases/latest) o desde **Actions → Build → Artifacts** y copia:
 
 | Sistema | Destino |
 |---------|---------|

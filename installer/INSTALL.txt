@@ -1,0 +1,24 @@
+Rimac — notas de instalación
+============================
+
+El instalador hace dos cosas:
+
+1. Copia el plugin a:
+   C:\Program Files\Common Files\VST3\Rimac.vst3
+
+   Abre tu DAW y busca "Rimac" en la categoría Dynamics.
+   Si el DAW estaba abierto durante la instalación, reinícialo.
+
+2. Instala la aplicación independiente en:
+   C:\Program Files\Rimac\Rimac.exe
+
+   Sirve para probar el plugin sin DAW (elige el dispositivo de audio
+   en Options > Audio/MIDI Settings).
+
+Notas
+-----
+- El plugin reporta 1536 samples de latencia; el host la compensa solo.
+- Para desinstalar: Configuración > Aplicaciones > Rimac, o el acceso
+  directo "Desinstalar Rimac" del menú Inicio.
+
+https://github.com/aMii5/rimac

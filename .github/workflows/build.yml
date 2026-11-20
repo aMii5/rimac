@@ -25,6 +25,12 @@ jobs:
       - name: Build VST3
         run: cmake --build build --config Release --target Rimac_VST3 Rimac_Standalone --parallel
 
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Build installer
+        run: '& "C:\Program Files (x86)\NSIS\makensis.exe" installer\Rimac.nsi'
+
       - name: Collect artifacts
         shell: pwsh
         run: |
@@ -41,6 +47,12 @@ jobs:
         with:
           name: Rimac-Windows-VST3
           path: Rimac-Windows-VST3.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rimac-Windows-Setup
+          path: dist/Rimac-1.0.0-Windows-Setup.exe
           if-no-files-found: error
 
   macos:
