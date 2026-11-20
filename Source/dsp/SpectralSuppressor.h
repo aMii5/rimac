@@ -113,7 +113,7 @@ private:
 
     mutable juce::SpinLock spectrumLock;
     std::array<float, numBins> uiSpectrum {};
-    std::atomic<bool> spectrumDirty { false };
+    mutable std::atomic<bool> spectrumDirty { false };
     std::atomic<float> reductionDb { 0.0f };
     int uiDecimator = 0;
 

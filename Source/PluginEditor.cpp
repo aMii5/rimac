@@ -4,8 +4,8 @@ namespace rimac
 {
 namespace
 {
-    constexpr int defaultWidth  = 1040;
-    constexpr int defaultHeight = 700;
+    constexpr int defaultWidth  = 1000;
+    constexpr int defaultHeight = 620;
 }
 
 //==============================================================================
@@ -14,14 +14,18 @@ RimacAudioProcessorEditor::RimacAudioProcessorEditor (RimacAudioProcessor& p)
       eqDisplay (p)
 {
     setResizable (true, true);
-    setResizeLimits (900, 606, 1600, 1077);
+    setResizeLimits (880, 546, 1600, 992);
     if (auto* c = getConstrainer())
-        c->setFixedAspectRatio (1040.0 / 700.0);
+        c->setFixedAspectRatio (1000.0 / 620.0);
 
     // ---- knobs ------------------------------------------------------------
     setupKnob (depthKnob,   "Depth",   ids::depth);
     setupKnob (attackKnob,  "Attack",  ids::attack);
     setupKnob (releaseKnob, "Release", ids::release);
+
+    depthAtt   = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, ids::depth, depthKnob);
+    attackAtt  = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, ids::attack, attackKnob);
+    releaseAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, ids::release, releaseKnob);
 
     // ---- mode pill --------------------------------------------------------
     addAndMakeVisible (modePill);
@@ -63,9 +67,9 @@ RimacAudioProcessorEditor::RimacAudioProcessorEditor (RimacAudioProcessor& p)
     scFreqStepper.onChange = [this] (double v) { setParam (ids::scFreq, v); };
     scSensStepper.onChange = [this] (double v) { setParam (ids::scSens, v); };
 
-    // ---- processing pill --------------------------------------------------
-    addAndMakeVisible (processingPill);
-    processingPill.onChange = [this] (int idx)
+    // ---- processing list --------------------------------------------------
+    addAndMakeVisible (processingList);
+    processingList.onChange = [this] (int idx)
     {
         if (auto* p = apvts.getParameter (ids::processing))
             p->setValueNotifyingHost (idx == 1 ? 1.0f : 0.0f);
@@ -106,6 +110,24 @@ RimacAudioProcessorEditor::RimacAudioProcessorEditor (RimacAudioProcessor& p)
     syncFromParams();
     setSize (defaultWidth, defaultHeight);
     startTimerHz (30);
+
+    // Dev helper: when RIMAC_SNAPSHOT points at a file path, render the whole
+    // editor to that PNG once and quit. Used to verify the layout headlessly.
+    if (auto path = juce::SystemStats::getEnvironmentVariable ("RIMAC_SNAPSHOT", {}); path.isNotEmpty())
+    {
+        juce::Timer::callAfterDelay (900, [this, path]
+        {
+            if (auto img = createComponentSnapshot (getLocalBounds(), true, 1.0f); img.isValid())
+            {
+                if (auto f = juce::File (path).createOutputStream())
+                {
+                    juce::PNGImageFormat png;
+                    png.writeImageToStream (img, *f);
+                }
+            }
+            juce::JUCEApplicationBase::quit();
+        });
+    }
 }
 
 RimacAudioProcessorEditor::~RimacAudioProcessorEditor() { stopTimer(); }
@@ -117,14 +139,11 @@ void RimacAudioProcessorEditor::setupKnob (ArcKnob& knob, const juce::String& ca
     knob.setCaption (caption);
     addAndMakeVisible (knob);
 
-    if (auto* p = apvts.getParameter (paramId))
-        knob.setValue (p->getValue(), juce::dontSendNotification);
-
-    knob.onValueChange = [this, &knob, paramId]
+    if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (paramId)))
     {
-        if (auto* p = apvts.getParameter (paramId))
-            p->setValueNotifyingHost ((float) knob.getValue());
-    };
+        const auto& range = rp->getNormalisableRange();
+        knob.setRange ((double) range.start, (double) range.end, (double) range.interval);
+    }
 }
 
 void RimacAudioProcessorEditor::setParam (const char* id, double realValue)
@@ -135,12 +154,14 @@ void RimacAudioProcessorEditor::setParam (const char* id, double realValue)
 
 void RimacAudioProcessorEditor::syncFromParams()
 {
-    auto pull = [this] (juce::Slider& knob, const char* id, auto formatter)
+    auto pull = [this] (ArcKnob& knob, const char* id, auto formatter)
     {
         if (auto* p = apvts.getParameter (id))
         {
-            knob.setValue (p->getValue(), juce::dontSendNotification);
-            knob.setValueText (formatter (p->convertFrom0to1 (p->getValue())));
+            const auto real = (double) p->convertFrom0to1 (p->getValue());
+            if (std::abs (real - knob.getValue()) > 1.0e-3)
+                knob.setValue (real, juce::dontSendNotification);
+            knob.setValueText (formatter ((float) real));
         }
     };
 
@@ -155,7 +176,7 @@ void RimacAudioProcessorEditor::syncFromParams()
         modePill.setSelectedIndex (p->getValue() > 0.5f ? 1 : 0, juce::dontSendNotification);
 
     if (auto* p = apvts.getParameter (ids::processing))
-        processingPill.setSelectedIndex (p->getValue() > 0.5f ? 1 : 0, juce::dontSendNotification);
+        processingList.setSelectedIndex (p->getValue() > 0.5f ? 1 : 0, juce::dontSendNotification);
 
     auto pullStepper = [this] (ValueStepper& s, const char* id)
     {
@@ -174,7 +195,7 @@ void RimacAudioProcessorEditor::syncFromParams()
 //==============================================================================
 void RimacAudioProcessorEditor::timerCallback()
 {
-    auto pull = [this] (juce::Slider& knob, const char* id, auto formatter)
+    auto pull = [this] (ArcKnob& knob, const char* id, auto formatter)
     {
         if (auto* p = apvts.getParameter (id))
         {
@@ -202,8 +223,8 @@ void RimacAudioProcessorEditor::timerCallback()
     if (auto* p = apvts.getParameter (ids::processing))
     {
         const int idx = p->getValue() > 0.5f ? 1 : 0;
-        if (processingPill.getSelectedIndex() != idx)
-            processingPill.setSelectedIndex (idx, juce::dontSendNotification);
+        if (processingList.getSelectedIndex() != idx)
+            processingList.setSelectedIndex (idx, juce::dontSendNotification);
     }
 
     portrait.setLevel (processor.getOutputLevelDb());
@@ -218,14 +239,16 @@ void RimacAudioProcessorEditor::resized()
     headerArea = b.removeFromTop (52.0f);
     b.removeFromTop (6.0f);
 
-    portraitArea = b.removeFromRight (juce::jlimit (200.0f, 320.0f, b.getWidth() * 0.28f));
+    // The bottom row spans the full width, so reserve it before the portrait
+    // column: in the reference layout the artwork stops above that row.
+    bottomArea = b.removeFromBottom (juce::jlimit (146.0f, 200.0f, b.getHeight() * 0.36f));
+    b.removeFromBottom (8.0f);
+
+    portraitArea = b.removeFromRight (juce::jlimit (180.0f, 300.0f, b.getWidth() * 0.27f));
     b.removeFromRight (10.0f);
 
-    topRowArea = b.removeFromTop (112.0f);
+    topRowArea = b.removeFromTop (juce::jmin (106.0f, b.getHeight() * 0.26f));
     b.removeFromTop (8.0f);
-
-    bottomArea = b.removeFromBottom (juce::jlimit (140.0f, 190.0f, b.getHeight() * 0.31f));
-    b.removeFromBottom (8.0f);
 
     displayArea = b;
 
@@ -240,7 +263,7 @@ void RimacAudioProcessorEditor::resized()
 
     // ---- top row ----------------------------------------------------------
     auto top = topRowArea.toNearestInt();
-    top.removeFromTop (14);   // panel title strip
+    top.removeFromTop (22);   // panel title strip
     modeArea = top.removeFromLeft (juce::roundToInt (top.getWidth() * 0.26f)).toFloat();
     top.removeFromLeft (6);
     const auto third = (float) top.getWidth() / 3.0f;
@@ -252,9 +275,9 @@ void RimacAudioProcessorEditor::resized()
     attackKnob.setBounds (attackArea.reduced (4.0f, 0.0f).toNearestInt());
     releaseKnob.setBounds (releaseArea.reduced (4.0f, 0.0f).toNearestInt());
 
-    auto modeRect = modeArea.reduced (8.0f, 0.0f).toNearestInt();
-    modeRect.removeFromTop (14);
-    modePill.setBounds (modeRect.removeFromTop (36));
+    auto modeRect = modeArea.reduced (14.0f, 0.0f).toNearestInt();
+    modeRect.removeFromTop (20);
+    modePill.setBounds (modeRect.removeFromTop (34));
 
     // ---- display ----------------------------------------------------------
     eqDisplay.setBounds (displayArea.toNearestInt());
@@ -281,15 +304,30 @@ void RimacAudioProcessorEditor::resized()
     auto scR = scArea.toNearestInt().reduced (12, 8);
     scR.removeFromTop (24);
     scSwitch.setBounds (scR.removeFromTop (22).removeFromRight (40));
-    auto scRow = scR.removeFromBottom (34);
-    // leave the little level meter on the left
-    scRow.removeFromLeft (juce::jmin (scRow.getWidth() / 3, 52));
-    scFreqStepper.setBounds (scRow.removeFromLeft (scRow.getWidth() / 2).reduced (3, 0));
-    scSensStepper.setBounds (scRow.reduced (3, 0));
+    scR.removeFromTop (4);
+
+    // Icon on the left spans the free height; the two steppers sit centred
+    // beside it, which keeps the panel balanced at any size.
+    const auto meterW = juce::jlimit (30, 54, scR.getWidth() / 4);
+    scIconArea = scR.removeFromLeft (meterW).toFloat();
+    scIconArea = scIconArea.withSizeKeepingCentre (scIconArea.getWidth(),
+                                                   juce::jmin (scIconArea.getHeight(), 74.0f));
+    scR.removeFromLeft (8);
+
+    auto scRow = scR.withSizeKeepingCentre (scR.getWidth(),
+                                            juce::jmin (68, scR.getHeight())).toNearestInt();
+    scFreqStepper.setBounds (scRow.removeFromTop (33).reduced (0, 1));
+    scRow.removeFromTop (2);
+    scSensStepper.setBounds (scRow.removeFromTop (33).reduced (0, 1));
 
     auto procR = procArea.toNearestInt().reduced (14, 8);
     procR.removeFromTop (24);
-    processingPill.setBounds (procR.removeFromTop (32).withTrimmedRight (14));
+    previousProcRightEdge = procR.getRight();
+    processingList.setBounds (procR.removeFromTop (52).withTrimmedRight (16));
+
+    // Children moved to new bounds leave stale pixels behind unless the whole
+    // canvas is repainted.
+    repaint();
 }
 
 //==============================================================================
@@ -386,7 +424,7 @@ void RimacAudioProcessorEditor::paint (juce::Graphics& g)
 
     g.setColour (theme::text);
     g.setFont (theme::font (13.5f, true));
-    g.drawText ("Modo", modeArea.reduced (12.0f, 0.0f).withHeight (16.0f).translated (0.0f, 4.0f),
+    g.drawText ("Modo", topRowArea.reduced (14.0f, 0.0f).withHeight (17.0f).translated (0.0f, 4.0f),
                 juce::Justification::topLeft, false);
 
     for (auto x : { depthArea.getX() - 4.0f, attackArea.getX() - 4.0f, releaseArea.getX() - 4.0f })
@@ -411,21 +449,27 @@ void RimacAudioProcessorEditor::paint (juce::Graphics& g)
     // ---- mini EQ curve preview -------------------------------------------
     {
         auto r = eqArea.reduced (18.0f, 8.0f);
-        r.removeFromTop (44.0f);
-        r.removeFromBottom (38.0f);
+        r.removeFromTop (46.0f);
+        r.removeFromBottom (36.0f);
 
-        if (r.getHeight() > 10.0f)
+        if (r.getHeight() > 8.0f && r.getWidth() > 20.0f)
         {
             juce::Path p;
-            p.startNewSubPath (r.getX(), r.getCentreY());
-            p.cubicTo (r.getX() + r.getWidth() * 0.28f, r.getCentreY() - r.getHeight() * 0.55f,
-                       r.getX() + r.getWidth() * 0.42f, r.getY() + r.getHeight() * 0.10f,
-                       r.getX() + r.getWidth() * 0.55f, r.getCentreY() - r.getHeight() * 0.18f);
-            p.cubicTo (r.getX() + r.getWidth() * 0.72f, r.getY(),
-                       r.getX() + r.getWidth() * 0.86f, r.getY(),
-                       r.getRight(), r.getCentreY() - r.getHeight() * 0.12f);
+            const auto mid = r.getCentreY();
+            const auto amp = r.getHeight() * 0.36f;
 
-            g.setColour (theme::accent.withAlpha (0.9f));
+            // Mirrors the mock-up: rises from the left, holds a broad plateau
+            // and falls away at the far right.
+            p.startNewSubPath (r.getX(), mid + amp * 0.85f);
+            p.cubicTo (r.getX() + r.getWidth() * 0.10f, mid + amp * 0.35f,
+                       r.getX() + r.getWidth() * 0.16f, mid - amp * 0.55f,
+                       r.getX() + r.getWidth() * 0.30f, mid - amp * 0.72f);
+            p.cubicTo (r.getX() + r.getWidth() * 0.52f, mid - amp * 0.95f,
+                       r.getX() + r.getWidth() * 0.72f, mid - amp * 0.92f,
+                       r.getX() + r.getWidth() * 0.86f, mid - amp * 0.55f);
+            p.quadraticTo (r.getRight() - 2.0f, mid - amp * 0.05f, r.getRight(), mid + amp * 0.30f);
+
+            g.setColour (theme::accent.withAlpha (0.95f));
             g.strokePath (p, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved,
                                                    juce::PathStrokeType::rounded));
 
@@ -433,51 +477,67 @@ void RimacAudioProcessorEditor::paint (juce::Graphics& g)
             {
                 const auto pt = p.getPointAlongPath (p.getLength() * t);
                 g.setColour (theme::accentBright);
-                g.fillEllipse (pt.x - 3.2f, pt.y - 3.2f, 6.4f, 6.4f);
+                g.fillEllipse (pt.x - 3.0f, pt.y - 3.0f, 6.0f, 6.0f);
             };
-            dot (0.04f); dot (0.24f); dot (0.88f);
+            dot (0.16f); dot (0.50f); dot (0.86f);
         }
     }
 
     // ---- sidechain level icon ---------------------------------------------
     {
-        auto r = scArea.reduced (16.0f, 8.0f);
-        r.removeFromTop (50.0f);
-        r.removeFromBottom (40.0f);
-        r = r.removeFromLeft (juce::jmin (r.getWidth() * 0.30f, 50.0f));
+        auto r = scIconArea.reduced (0.0f, 6.0f);
 
-        if (r.getHeight() > 12.0f)
+        if (r.getHeight() > 12.0f && r.getWidth() > 10.0f)
         {
-            const int bars = 6;
-            const auto bw = r.getWidth() / (float) bars;
+            theme::drawPanel (g, r, 8.0f);
+
+            auto bars = r.reduced (8.0f, 9.0f);
+            const int n = 6;
+            const auto bw = bars.getWidth() / (float) n;
             const auto lvl = juce::jlimit (0.0f, 1.0f, (processor.getOutputLevelDb() + 60.0f) / 60.0f);
             const float heights[] = { 0.45f, 0.75f, 1.0f, 0.6f, 0.85f, 0.35f };
 
-            for (int i = 0; i < bars; ++i)
+            for (int i = 0; i < n; ++i)
             {
-                const auto h = r.getHeight() * heights[i] * (0.35f + 0.65f * lvl);
-                g.setColour (theme::accentBright.withAlpha (0.35f + 0.5f * lvl));
-                g.fillRoundedRectangle (r.getX() + (float) i * bw + 1.4f,
-                                        r.getBottom() - h, bw - 2.8f, h, 1.5f);
+                const auto h = bars.getHeight() * heights[i] * (0.35f + 0.65f * lvl);
+                g.setColour (theme::accentBright.withAlpha (0.40f + 0.55f * lvl));
+                g.fillRoundedRectangle (bars.getX() + (float) i * bw + 1.2f,
+                                        bars.getBottom() - h, bw - 2.4f, h, 1.5f);
             }
         }
     }
 
-    // ---- processing panel: Mid/Side radio dots ----------------------------
+    // ---- processing panel: L/R meter on the right -------------------------
     {
-        auto r = procArea.reduced (18.0f, 8.0f);
-        r.removeFromTop (58.0f);
+        auto meter = procArea.reduced (18.0f, 12.0f);
+        meter.removeFromTop (26.0f);
+        meter = meter.removeFromRight (juce::jmin (28.0f, meter.getWidth() * 0.24f));
 
-        const auto selected = processingPill.getSelectedIndex();
-        for (int i = 0; i < 2; ++i)
+        auto labels = meter.removeFromBottom (13.0f);
+
+        if (meter.getHeight() > 16.0f && meter.getWidth() > 8.0f)
         {
-            auto row = r.removeFromTop (26);
-            auto dotArea = row.removeFromLeft (22).toFloat().withSizeKeepingCentre (14.0f, 14.0f);
-            g.setColour (i == selected ? theme::accent : juce::Colours::transparentBlack);
-            g.fillEllipse (dotArea);
-            g.setColour (i == selected ? theme::accentGlow : theme::stroke);
-            g.drawEllipse (dotArea.reduced (0.5f), i == selected ? 1.6f : 1.2f);
+            const int bars = 12;
+            const auto bh = meter.getHeight() / (float) bars;
+            const auto barW = meter.getWidth() * 0.42f;
+
+            for (int i = 0; i < bars; ++i)
+            {
+                const auto t = (float) i / (float) (bars - 1);
+                const auto y = meter.getY() + meter.getHeight() * t;
+
+                g.setColour (theme::accentBright.withAlpha (0.88f - 0.42f * t));
+                g.fillRoundedRectangle (meter.getX(), y, barW, bh * 0.68f, 1.0f);
+                g.setColour (theme::accentBright.withAlpha (0.72f - 0.38f * t));
+                g.fillRoundedRectangle (meter.getX() + meter.getWidth() - barW, y,
+                                        barW, bh * 0.68f, 1.0f);
+            }
         }
+
+        g.setColour (theme::textDim);
+        g.setFont (theme::font (9.0f));
+        g.drawText ("L", labels, juce::Justification::centredLeft, false);
+        g.drawText ("R", labels, juce::Justification::centredRight, false);
     }
 
     // ---- footer -----------------------------------------------------------
@@ -486,13 +546,6 @@ void RimacAudioProcessorEditor::paint (juce::Graphics& g)
     g.drawText ("RIMAC  v" RIMAC_VERSION, getLocalBounds().reduced (14, 5).removeFromBottom (12),
                 juce::Justification::bottomRight, false);
 
-    // ---- reduction read-out ----------------------------------------------
-    {
-        auto r = eqDisplay.getBounds().toFloat().removeFromTop (20.0f).translated (-6.0f, -18.0f);
-        const auto red = processor.getReductionDb();
-        g.setColour (red < -0.4f ? theme::accentGlow : theme::textFaint);
-        g.setFont (theme::monoFont (10.0f));
-        g.drawText ("GR " + juce::String (red, 1) + " dB", r, juce::Justification::centredRight, false);
-    }
+    // ---- reduction read-out (drawn inside EQDisplay) ----------------------
 }
 } // namespace rimac

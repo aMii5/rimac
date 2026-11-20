@@ -106,6 +106,15 @@ void EQDisplay::timerCallback()
             for (size_t i = 0; i < spectrum.size(); ++i)
                 smoothedSpectrum[i] = smoothedSpectrum[i] * 0.72f + spectrum[i] * 0.28f;
         }
+
+        // A silent buffer still fills the bins with the -120 dB floor; treat
+        // that as "no signal" so the analyser shows its idle silhouette
+        // instead of a flat line stuck at the bottom.
+        float peak = -120.0f;
+        for (auto v : smoothedSpectrum)
+            peak = juce::jmax (peak, v);
+
+        signalPresent = peak > -78.0f;
     }
 
     phase += 0.06f;
@@ -133,6 +142,16 @@ void EQDisplay::paint (juce::Graphics& g)
     g.drawRoundedRectangle (bounds.reduced (0.5f), 8.0f, 1.0f);
 
     const auto plot = plotArea();
+
+    // ---- gain-reduction read-out ------------------------------------------
+    {
+        const auto red = processor.getReductionDb();
+        auto r = juce::Rectangle<float> (bounds.getX() + 4.0f, bounds.getY() + 5.0f,
+                                         bounds.getWidth() - 14.0f, 13.0f);
+        g.setColour (red < -0.4f ? theme::accentGlow : theme::textFaint);
+        g.setFont (theme::monoFont (9.5f));
+        g.drawText ("GR " + juce::String (red, 1) + " dB", r, juce::Justification::topRight, false);
+    }
 
     // ---- grid --------------------------------------------------------------
     g.setColour (theme::strokeSoft.withAlpha (0.55f));
@@ -165,7 +184,6 @@ void EQDisplay::paint (juce::Graphics& g)
     }
 
     // ---- live spectrum (mirrored area under the curve) --------------------
-    if (haveSpectrum)
     {
         juce::Path spec;
         spec.startNewSubPath (plot.getX(), plot.getBottom());
@@ -176,25 +194,44 @@ void EQDisplay::paint (juce::Graphics& g)
         const auto binHz = 48000.0f / (float) SpectralSuppressor::fftSize;
 
         const int steps = juce::jmax (64, (int) plot.getWidth());
-        for (int s = 0; s <= steps; ++s)
+
+        auto spectrumDbAt = [&] (int s) -> float
         {
             const auto t = (float) s / (float) steps;
             const auto hz = xToFreq (plot.getX() + t * plot.getWidth());
-            const auto bin = juce::jlimit (1, bins - 1, (int) std::round (hz / binHz));
-            const auto db = smoothedSpectrum[(size_t) bin];
-
-            // Map -90..0 dB onto the visible range with a gentle tilt so the
-            // high end does not vanish.
             const auto tilt = 5.0f * std::log2 (juce::jmax (100.0f, hz) / 1000.0f);
-            const auto y = dbToY (juce::jlimit (minDb, maxDb, db + tilt) - 6.0f);
+
+            if (haveSpectrum && signalPresent)
+            {
+                const auto bin = juce::jlimit (1, bins - 1, (int) std::round (hz / binHz));
+                return smoothedSpectrum[(size_t) bin] + tilt - 6.0f;
+            }
+
+            // Idle: silhouette of a typical mix so the analyser never looks
+            // dead before the transport rolls.
+            const auto lf = std::log10 (juce::jmax (20.0f, hz));
+            const auto base = -16.0f
+                              - 13.0f * juce::jlimit (0.0f, 1.0f, (lf - std::log10 (60.0f)) / 2.6f)
+                              + 7.0f * std::sin (lf * 6.1f)
+                              + 4.5f * std::sin (lf * 15.7f)
+                              + 2.5f * std::sin (lf * 31.3f);
+            return base + tilt * 0.55f;
+        };
+
+        for (int s = 0; s <= steps; ++s)
+        {
+            const auto t = (float) s / (float) steps;
+            const auto y = dbToY (juce::jlimit (minDb, maxDb, spectrumDbAt (s)));
             spec.lineTo (plot.getX() + t * plot.getWidth(), y);
         }
 
         spec.lineTo (plot.getRight(), plot.getBottom());
         spec.closeSubPath();
 
-        juce::ColourGradient fill (theme::accent.withAlpha (0.55f), plot.getCentreX(), plot.getY(),
-                                   theme::accentDeep.withAlpha (0.02f), plot.getCentreX(), plot.getBottom(), false);
+        juce::ColourGradient fill (theme::accent.withAlpha (signalPresent ? 0.55f : 0.38f),
+                                   plot.getCentreX(), plot.getY(),
+                                   theme::accentDeep.withAlpha (0.02f), plot.getCentreX(),
+                                   plot.getBottom(), false);
         g.setGradientFill (fill);
         g.fillPath (spec);
 
@@ -203,24 +240,13 @@ void EQDisplay::paint (juce::Graphics& g)
         for (int s = 0; s <= steps; ++s)
         {
             const auto t = (float) s / (float) steps;
-            const auto hz = xToFreq (plot.getX() + t * plot.getWidth());
-            const auto bin = juce::jlimit (1, bins - 1, (int) std::round (hz / binHz));
-            const auto db = smoothedSpectrum[(size_t) bin];
-            const auto tilt = 5.0f * std::log2 (juce::jmax (100.0f, hz) / 1000.0f);
-            const auto y = dbToY (juce::jlimit (minDb, maxDb, db + tilt) - 6.0f);
-            const juce::Point<float> pt (plot.getX() + t * plot.getWidth(), y);
+            const juce::Point<float> pt (plot.getX() + t * plot.getWidth(),
+                                         dbToY (juce::jlimit (minDb, maxDb, spectrumDbAt (s))));
             if (first) { top.startNewSubPath (pt); first = false; }
             else        top.lineTo (pt);
         }
-        g.setColour (theme::accent.withAlpha (0.85f));
+        g.setColour (theme::accent.withAlpha (signalPresent ? 0.85f : 0.62f));
         g.strokePath (top, juce::PathStrokeType (1.4f));
-    }
-    else
-    {
-        // Idle display: a subtle halftone bed so the panel never looks empty.
-        juce::Graphics::ScopedSaveState save (g);
-        g.reduceClipRegion (plot.toNearestInt());
-        theme::drawHalftoneField (g, plot, 0.10f, 2.2f, 9.0f);
     }
 
     // ---- suppression curve ------------------------------------------------
@@ -241,7 +267,7 @@ void EQDisplay::paint (juce::Graphics& g)
     {
         const auto c1 = p0.translated ((p1.x - p0.x) * 0.45f, 0.0f);
         const auto c2 = p1.translated (-(p1.x - p0.x) * 0.45f, 0.0f);
-        constexpr int seg = steps / 3;
+        constexpr int seg = 74;
         for (int i = 1; i <= seg; ++i)
         {
             const auto t = (float) i / (float) seg;

@@ -31,6 +31,7 @@ private:
 
     ArcKnob depthKnob, attackKnob, releaseKnob;
     SegmentedPill modePill { juce::StringArray { "Soft", "Hard" } };
+    RadioList processingList { juce::StringArray { "Mid", "Side" } };
 
     EQDisplay eqDisplay;
 
@@ -42,10 +43,9 @@ private:
     ValueStepper scFreqStepper { "Freq", 20.0, 20000.0, 1.0 };
     ValueStepper scSensStepper { "Sens", -60.0, 0.0, 0.1 };
 
-    SegmentedPill processingPill { juce::StringArray { "Mid", "Side" } };
-
     IconButton bypassButton { "Power" };
-    IconButton settingsButton { "Settings" };    juce::ComboBox presetBox;
+    IconButton settingsButton { "Settings" };
+    juce::ComboBox presetBox;
 
     PortraitPanel portrait;
 
@@ -53,7 +53,10 @@ private:
     juce::Rectangle<float> modeArea, depthArea, attackArea, releaseArea;
     juce::Rectangle<float> eqArea, scArea, procArea;
     juce::Rectangle<float> portraitArea;
+    int previousProcRightEdge = 0;
+    juce::Rectangle<float> scIconArea;
 
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> depthAtt, attackAtt, releaseAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> eqOnAtt, scOnAtt, bypassAtt;
 
     juce::TooltipWindow tooltips { this, 600 };

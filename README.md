@@ -19,6 +19,8 @@ Plugin de audio (VST3 / AU / Standalone) que **suprime resonancias dinámicament
 
 Extras: bypass con latencia reportada al host, 3 presets, medidor de salida, indicador de reducción (GR), UI redimensionable con aspecto fijo y tooltips.
 
+El panel derecho muestra el retrato incrustado en el binario (`juce_add_binary_data`), así que el arte viaja con el plugin.
+
 ---
 
 ## Instalación

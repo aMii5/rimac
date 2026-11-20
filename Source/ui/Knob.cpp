@@ -198,6 +198,70 @@ void SegmentedPill::mouseDown (const juce::MouseEvent& e)
 }
 
 //==============================================================================
+RadioList::RadioList (juce::StringArray options) : items (std::move (options))
+{
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void RadioList::setSelectedIndex (int index, juce::NotificationType n)
+{
+    index = juce::jlimit (0, juce::jmax (0, items.size() - 1), index);
+    if (index == selected) return;
+    selected = index;
+    repaint();
+    if (n != juce::dontSendNotification && onChange)
+        onChange (selected);
+}
+
+void RadioList::paint (juce::Graphics& g)
+{
+    auto b = getLocalBounds().toFloat();
+    b = b.withSizeKeepingCentre (b.getWidth(), juce::jmin (b.getHeight(),
+                                                           (float) (26 * items.size())));
+
+    const auto rowH = b.getHeight() / (float) juce::jmax (1, items.size());
+    const auto dot = juce::jmin (14.0f, rowH * 0.55f);
+
+    for (int i = 0; i < items.size(); ++i)
+    {
+        auto row = b.withY (b.getY() + rowH * (float) i).withHeight (rowH);
+        auto dotArea = row.removeFromLeft (dot + 10.0f).withSizeKeepingCentre (dot, dot);
+
+        const bool on = (i == selected);
+
+        if (on)
+        {
+            g.setColour (theme::accent.withAlpha (0.30f));
+            g.fillEllipse (dotArea.expanded (4.0f));
+            g.setColour (theme::accent);
+            g.fillEllipse (dotArea);
+            g.setColour (theme::accentGlow);
+            g.drawEllipse (dotArea.reduced (0.4f), 1.4f);
+        }
+        else
+        {
+            g.setColour (theme::stroke);
+            g.drawEllipse (dotArea.reduced (0.7f), 1.4f);
+        }
+
+        g.setColour (on ? theme::text : theme::textDim);
+        g.setFont (theme::font (13.0f, on));
+        g.drawText (items[i], row, juce::Justification::centredLeft, false);
+    }
+}
+
+void RadioList::mouseDown (const juce::MouseEvent& e)
+{
+    auto b = getLocalBounds().toFloat();
+    b = b.withSizeKeepingCentre (b.getWidth(), juce::jmin (b.getHeight(),
+                                                           (float) (26 * items.size())));
+    const auto rowH = b.getHeight() / (float) juce::jmax (1, items.size());
+    const int idx = juce::jlimit (0, items.size() - 1,
+                                  (int) ((e.position.y - b.getY()) / juce::jmax (1.0f, rowH)));
+    setSelectedIndex (idx);
+}
+
+//==============================================================================
 ValueStepper::ValueStepper (juce::String cap, double lo, double hi, double step)
     : caption (std::move (cap)), minValue (lo), maxValue (hi), intervalValue (step),
       value (juce::jlimit (lo, hi, 0.0))

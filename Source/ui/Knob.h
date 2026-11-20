@@ -53,7 +53,8 @@ public:
     void paintButton (juce::Graphics&, bool, bool) override {}
 };
 
-/** Two-option segmented pill (Soft / Hard, Mid / Side). */class SegmentedPill : public juce::Component
+/** Two-option segmented pill (Soft / Hard). */
+class SegmentedPill : public juce::Component
 {
 public:
     SegmentedPill (juce::StringArray options);
@@ -72,6 +73,26 @@ private:
     int selected = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SegmentedPill)
+};
+
+/** Vertical radio list (dot + label), used for Mid / Side. */
+class RadioList : public juce::Component
+{
+public:
+    RadioList (juce::StringArray options);
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+
+    std::function<void (int)> onChange;
+    void setSelectedIndex (int index, juce::NotificationType n = juce::sendNotificationAsync);
+    int getSelectedIndex() const noexcept { return selected; }
+
+private:
+    juce::StringArray items;
+    int selected = 0;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RadioList)
 };
 
 /** Compact numeric stepper with < > arrows, used for Freq / Gain / Sens. */

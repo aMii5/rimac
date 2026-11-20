@@ -52,6 +52,7 @@ private:
     std::array<float, SpectralSuppressor::numBins> spectrum {};
     std::array<float, SpectralSuppressor::numBins> smoothedSpectrum {};
     bool haveSpectrum = false;
+    bool signalPresent = false;
 
     // Three control nodes: [freq, gain]
     struct Node { float freq, gain; };

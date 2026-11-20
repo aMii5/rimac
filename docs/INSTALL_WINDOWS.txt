@@ -1,1 +1,15 @@
-C:\Program Files\Common Files\VST3\
+Rimac — instalación en Windows
+==============================
+
+1. Copia la carpeta Rimac.vst3 a:
+
+   C:\Program Files\Common Files\VST3\
+
+   (hace falta permiso de administrador)
+
+2. Reinicia el DAW.
+3. Añade Rimac como efecto en un canal. Aparece en la categoría Dynamics.
+
+También puedes usar Rimac.exe (Standalone) para probarlo sin DAW.
+
+El plugin reporta 1536 samples de latencia; el host la compensa solo.

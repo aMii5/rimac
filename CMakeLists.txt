@@ -32,6 +32,11 @@ juce_add_plugin(Rimac
     BUNDLE_ID                 "com.rimacaudio.rimac"
     VST3_CATEGORIES           Fx Dynamics
     AU_MAIN_TYPE              kAudioUnitType_Effect
+    ICON_BIG                  "${CMAKE_CURRENT_SOURCE_DIR}/Resources/icon.png"
+)
+
+juce_add_binary_data(RimacResources SOURCES
+    Resources/portrait.png
 )
 
 target_sources(Rimac PRIVATE
@@ -48,14 +53,15 @@ target_compile_definitions(Rimac PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_REPORT_APP_USAGE=0
+    RIMAC_HAS_PORTRAIT=1
     RIMAC_VERSION="${PROJECT_VERSION}"
 )
 
 target_include_directories(Rimac PRIVATE Source)
 
 target_link_libraries(Rimac PRIVATE
+    RimacResources
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_gui_extra
